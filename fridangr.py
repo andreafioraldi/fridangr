@@ -2,12 +2,43 @@ import frida
 
 from angrdbg import *
 
+
+class RemoteFile(object):
+    def __init__(self, dbg, name, base):
+        self.dbg = dbg
+        self.name = name
+        self.base = base
+        self.pos = 0
+    
+    def __eq__(self, o):
+        try:
+            return self.name == o.name
+        except:
+            return False
+    
+    def read(self, size):
+        v = self.dbg.get_bytes(self.base + self.pos, size)
+        self.pos += size
+        return v
+    
+    def seek(self, pos):
+        p = self.pos
+        self.pos = pos
+        return pos
+
+
 class FridaDebugger(Debugger):
     name = "frida"
     
     def __init__(self, session, api):
         self.session = session
         self.api = api
+        
+        self.get_byte = api.get_byte
+        self.get_word = api.get_word
+        self.get_dword = api.get_dword
+        self.get_qword = api.get_qword
+        self.get_bytes = api.get_bytes
     
     # -------------------------------------
     def before_stateshot(self):
@@ -22,26 +53,12 @@ class FridaDebugger(Debugger):
 
     # -------------------------------------
     def input_file(self):  # the file will be closed after a read
-        raise NotImplementedError()
+        return RemoteFile(self, "_aot_", self.api.get_aot_module_addr())
 
     def image_base(self):
-        raise NotImplementedError()
+        return self.api.get_aot_module_addr()
 
     # -------------------------------------
-    def get_byte(self, addr):
-        raise NotImplementedError()
-
-    def get_word(self, addr):
-        raise NotImplementedError()
-
-    def get_dword(self, addr):
-        raise NotImplementedError()
-
-    def get_qword(self, addr):
-        raise NotImplementedError()
-
-    def get_bytes(self, addr, size):
-        raise NotImplementedError()
 
     def put_byte(self, addr, value):
         raise NotImplementedError()
@@ -98,15 +115,8 @@ class FridaDebugger(Debugger):
 
 
 def init(session):
-    script = session.create_script("""\
-    'use strict';
-
-    rpc.exports = {
-      get_byte: function(addr) {
-        return Memory.readU8(addr);
-      },
-    };
-    """)
+    with open("fridangr.js") as code:
+        script = session.create_script(code.read())
 
     script.load()
     api = script.exports
